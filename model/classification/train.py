@@ -1,17 +1,21 @@
 import argparse
 import time
 import math
+import numpy as np
+import os 
+import random
+import pickle
+import sys
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
-import random
+
+sys.path.insert(0, '../util')
+import logger
 import data
 import classification
-import pickle
-import numpy as np
-import os 
-
 
 parser = argparse.ArgumentParser(description='PyTorch RNN/LSTM Language Model')
 parser.add_argument('--data', type=str, default='../../data',
@@ -47,26 +51,36 @@ parser.add_argument('--log-interval', type=int, default=200, metavar='N',
 parser.add_argument('--save', type=str,  default='model.pt',
                     help='path to save the final model')
 parser.add_argument('--bidirectional', action='store_true', help='LSTM: bidirectional or not')
+parser.add_argument("--log_path", type=str, default="../logs")
 args = parser.parse_args()
 
 # Set the random seed manually for reproducibility.
 torch.manual_seed(args.seed)
+
+if not os.path.exists(args.log_path):
+    os.makedirs(args.log_path)
+logpath = os.path.join(args.log_path, args.model) + ".log"
+
+logger = logger.Logger(logpath)
+
+logger.Log(args)
 
 ###############################################################################
 # Load data
 ###############################################################################
 
 #data_set = data.load_data(args.data + '/topics_labeled_sample.xlsx')
-print('load data')
+#print('load data')
+logger.Log('Load data')
 data_set = data.load_data(args.data + '/training_set_rel3.tsv')
 data_size = len(data_set)
-print('data_size', data_size)
+#print('data_size', data_size)
 training_set = data_set[:int(data_size*0.8)]
 dev_set = data_set[int(data_size*0.8):int(data_size*0.9)]
 test_set = data_set[int(data_size*0.9):]
 
 word_to_ix, index_to_word, vocab_size = data.build_dictionary([training_set])
-print('vocab_size:', vocab_size)
+#print('vocab_size:', vocab_size)
 data.sentences_to_padded_index_sequences(word_to_ix, [training_set, dev_set])
 
 ###############################################################################
@@ -167,8 +181,10 @@ def training_loop(batch_size, num_epochs, model, loss_, optim, training_iter, de
             if epoch % 1 == 0:
                 acc_train = evaluate(model, train_eval_iter)
                 acc_dev = evaluate(model, dev_iter)
-                print("Epoch %i; Step %i; Loss %f; Train acc: %f; Dev acc: %f" 
+                logger.Log("Epoch %i; Step %i; Loss %f; Train acc: %f; Dev acc: %f" 
                       %(epoch, step, lossy.data[0], acc_train, acc_dev))
+                #print("Epoch %i; Step %i; Loss %f; Train acc: %f; Dev acc: %f" 
+                #      %(epoch, step, lossy.data[0], acc_train, acc_dev))
             epoch += 1
         step += 1
 
@@ -241,18 +257,19 @@ glove = {}
 filtered_glove = {}
 glove_path = '../../data/filtered_glove_{}.p'.format(int(args.emsize))
 if(os.path.isfile(glove_path)):
-    print("Reusing glove dictionary to save time")
+    #print("Reusing glove dictionary to save time")
+    logger.Log("Reusing glove dictionary to save time")
     pretrained_embedding = pickle.load(open(glove_path,'rb'))
 else:
     if args.emsize in [50,100,200,300]:
-        print('loading glove embedding')
+        #print('loading glove embedding')
         with open('../../data/glove/glove.6B.{}d.txt'.format(int(args.emsize))) as f:
             lines = f.readlines()
             for l in lines:
                vec = l.split(' ')
                glove[vec[0].lower()] = np.array(vec[1:])
-        print('glove size={}'.format(len(glove)))
-        print("Finished making glove dictionary")
+        #print('glove size={}'.format(len(glove)))
+        #print("Finished making glove dictionary")
 
     for i in range(2, len(index_to_word)):
         word = index_to_word[i]
@@ -266,12 +283,12 @@ else:
             matrix = np.vstack((matrix,random_init))
 
     pickle.dump(matrix, open("../../data/filtered_glove_{}.p".format(args.emsize), "wb"))
-    print(matrix.shape)
+    #print(matrix.shape)
     pretrained_embedding = matrix
-    print("word_to_ix", len(word_to_ix))
-    print("oov={}".format(oov))
-    print("Saving glove vectors")
-
+    #print("word_to_ix", len(word_to_ix))
+    #print("oov={}".format(oov))
+    #print("Saving glove vectors")
+    logger.Log("Saving glove vectors")
 ###############################################################################
 # Build the model
 ###############################################################################
@@ -288,7 +305,8 @@ optimizer = torch.optim.Adam(rnn.parameters(), lr=args.lr)
 training_iter = data_iter(training_set, args.batch_size)
 train_eval_iter = eval_iter(training_set, args.batch_size)
 dev_iter = eval_iter(dev_set, args.batch_size)
-print('start training:')
+#print('start training:')
+logger.Log('start training:')
 training_loop(args.batch_size, args.epochs, rnn, loss, optimizer, training_iter, dev_iter, train_eval_iter)
 
 #dev_full_iter = eval_iter(dev_set, args.batch_size)

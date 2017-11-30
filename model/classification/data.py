@@ -71,7 +71,7 @@ def sentences_to_padded_index_sequences(word_indices, datasets):
         for example in dataset:
             max_seq_length = max(max_seq_length, len(tokenize(example['text'])))
 
-    print("max_seq_length", max_seq_length)
+    #print("max_seq_length", max_seq_length)
     
     for i, dataset in enumerate(datasets):
         for example in dataset:
