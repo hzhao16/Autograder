@@ -5,6 +5,7 @@ import random
 import numpy as np
 import os 
 import sys
+from sklearn.metrics import cohen_kappa_score
 
 import torch
 import torch.nn as nn
@@ -160,41 +161,47 @@ def training_loop(batch_size, num_epochs, model, loss_, optim, training_iter, de
     step = 0
     epoch = 0
     total_batches = int(len(training_set) / batch_size)
+    total_samples = total_batches * batch_size
     hidden = model.init_hidden(batch_size)
     while epoch <= num_epochs:
         epoch_loss = 0
         model.train()
-        vectors, labels = get_batch(next(training_iter)) 
 
-        vectors = Variable(torch.stack(vectors).squeeze())
+        vectors, labels = get_batch(next(training_iter)) 
+        #print(labels)
+        vectors = torch.stack(vectors).squeeze()
         vectors = vectors.transpose(1, 0)
-        labels = Variable(torch.stack(labels).squeeze())
         
+        labels = torch.stack(labels).squeeze()
+        if args.cuda:
+            vectors = vectors.cuda()
+            labels = labels.cuda() 
+        vectors = Variable(vectors)
+        labels = Variable(labels)
+
         hidden = repackage_hidden(hidden)
         model.zero_grad()
         output, hidden = model(vectors, hidden)
         #print('o',output.size())
         lossy = loss_(output, labels)
-        epoch_loss += lossy.data[0]
+        epoch_loss += lossy.data[0] * batch_size
 
         lossy.backward()
         torch.nn.utils.clip_grad_norm(model.parameters(), 5.0)
         optim.step()
-        
-        step += 1
+
 
         if step % total_batches == 0:
-            logger.Log("Epoch {}: Avg. Loss: {:.4f}".format(epoch, epoch_loss / total_batches))
-            #print("Epoch {}: Avg. Loss: {:.4f}".format(epoch, epoch_loss / total_batches))
-            epoch += 1
-        if step % 5 == 0:
-            #acc_train = evaluate(model, train_eval_iter)
+            loss_train = evaluate(model, train_eval_iter)
             loss_dev = evaluate(model, dev_iter)
-            logger.Log("Epoch %i; Step %i; Loss %f; Dev loss: %f" 
-                  %(epoch, step, lossy.data[0], loss_dev))
-            #print("Epoch %i; Step %i; Loss %f; Dev loss: %f" 
-            #      %(epoch, step, lossy.data[0], loss_dev))
-        
+            kappa_dev = evaluate_kappa(model, dev_iter)
+            logger.Log("Epoch %i; Step %i; Avg Loss %f; Train loss: %f; Dev loss: %f; Dev kappa: %f" 
+                  %(epoch, step, epoch_loss/total_samples, loss_train, loss_dev, kappa_dev))
+            epoch += 1
+            
+        if step % 5 == 0:
+            logger.Log("Epoch %i; Step %i; loss %f" %(epoch, step, lossy.data[0]))
+        step += 1
 
 # This function outputs the accuracy on the dataset, we will use it during training.
 def evaluate(model, data_iter):
@@ -205,10 +212,15 @@ def evaluate(model, data_iter):
     hidden = model.init_hidden(args.batch_size)
     for i in range(len(data_iter)):
         vectors, labels = get_batch(data_iter[i])
-        vectors = Variable(torch.stack(vectors).squeeze())
+        vectors = torch.stack(vectors).squeeze()
         vectors = vectors.transpose(1, 0)
         labels = torch.stack(labels).squeeze()
-        
+
+        if args.cuda:
+            vectors = vectors.cuda()
+            labels = labels.cuda()
+        vectors = Variable(vectors)
+
         hidden = repackage_hidden(hidden)
         output, hidden = model(vectors, hidden)
 
@@ -219,39 +231,26 @@ def evaluate(model, data_iter):
 
 
 # This function gives us the confusion matrix for all labels and the overall accuracy.
-def evaluate_confusion(model, data_iter):
+def evaluate_kappa(model, data_iter):
     model.eval()
-    correct_all = 0
-    correct = {}
-    for lab in easy_label_map:
-        correct[lab] = [0,0,0,0,0] #eses, esar, ptpt, ptbr, total
-    total = 0
+    predicted = []
+    true_labels = []
     hidden = model.init_hidden(args.batch_size)
     for i in range(len(data_iter)):
         vectors, labels = get_batch(data_iter[i])
-        vectors = Variable(torch.stack(vectors).squeeze())
+        vectors = torch.stack(vectors).squeeze()
         vectors = vectors.transpose(1, 0)
-        labels = torch.stack(labels).squeeze()
-    
+
+        if args.cuda:
+            vectors = vectors.cuda()
+        vectors = Variable(vectors)
         hidden = repackage_hidden(hidden)
         output, hidden = model(vectors, hidden)
-        
-        _, predicted = torch.max(output.data, 1)
-        total += labels.size(0)
-        correct_all += (predicted == labels).sum()
-        
-        for lab in easy_label_map:
-            inds = (labels[:] == easy_label_map[lab]).nonzero().squeeze()
-            for i in range(len(easy_label_map)):
-                tmp =  torch.ones(len(inds.size())).long()*i
-                correct[lab][i] += (predicted[inds] == tmp).sum()
-            correct[lab][-1] += inds.size(0)
-        
-        confusion = {}
-        for val in correct:
-            confusion[val] = {v:correct[val][i] for i, v in enumerate(easy_label_map)}
-        
-    return confusion, correct_all / float(total)
+        predicted.extend([round(num) for num in output.data.cpu().numpy()])
+
+        true_labels.extend(labels)
+
+    return cohen_kappa_score(true_labels, predicted, weights = "quadratic")
 
 ###############################################################################
 # Load pre-trained embedding 
@@ -300,8 +299,10 @@ else:
 ###############################################################################
 
 # Build, initialize, and train model
-rnn = regression.RNNModel(args.model, vocab_size, args.emsize, args.nhid, args.nlayers, dropout=args.dropout, bidirectional=args.bidirectional, pretrained_embedding=pretrained_embedding)
-
+rnn = regression.RNNModel(args, args.model, vocab_size, args.emsize, args.nhid, args.nlayers, dropout=args.dropout, bidirectional=args.bidirectional, pretrained_embedding=pretrained_embedding)
+if args.cuda:
+    rnn.cuda()
+    
 # Loss and Optimizer
 loss = nn.MSELoss()
 optimizer = torch.optim.Adam(rnn.parameters(), lr=args.lr)
