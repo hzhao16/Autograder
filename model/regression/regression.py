@@ -8,7 +8,7 @@ import torch.nn.functional as F
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
 
-    def __init__(self, rnn_type, vocab_size, embedding_dim, hidden_size, num_layers, dropout=0.5, bidirectional = False, pretrained_embedding=None):
+    def __init__(self, args, rnn_type, vocab_size, embedding_dim, hidden_size, num_layers, dropout=0.5, bidirectional = False, pretrained_embedding=None):
         super(RNNModel, self).__init__()
         self.encoder = nn.Embedding(vocab_size, embedding_dim)
         self.rnn = getattr(nn, rnn_type)(embedding_dim, hidden_size, num_layers, bias=False, dropout=dropout, bidirectional=bidirectional)
@@ -27,6 +27,8 @@ class RNNModel(nn.Module):
         if(pretrained_embedding is not None):
             pretrained_embedding = pretrained_embedding.astype(np.float32)
             pretrained_embedding = torch.from_numpy(pretrained_embedding)
+            if self.args.cuda:
+                pretrained_embedding = pretrained_embedding.cuda()
             self.encoder.weight.data = pretrained_embedding
         else:
             self.encoder.weight.data.uniform_(-initrange, initrange)
@@ -42,6 +44,7 @@ class RNNModel(nn.Module):
             decoded = self.decoder_bi(output)
         else:
             decoded = self.decoder(output)
+        
         #decoded = self.sigmoid(decoded)
         return decoded, hidden
     

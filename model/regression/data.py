@@ -23,12 +23,13 @@ def load_data(path):
     data_df = pd.read_csv(path, sep='\t', encoding='latin1')
     data_df = data_df[data_df['essay_set']!=2]
     contents = data_df['essay']
-    data_df['score'] = data_df.apply(lambda x: scale_score(x), axis=1)
+    #data_df['score'] = data_df.apply(lambda x: scale_score(x), axis=1)
+    data_df['score'] = data_df['domain1_score']
     labels = data_df['score'] 
     for content, label in zip(contents, labels):
         example = {}
         example["text"] = content
-        example['score'] = label
+        example['score'] = float(label)
         if example["score"] is None:
             continue        
         data.append(example)
