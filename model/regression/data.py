@@ -91,6 +91,6 @@ def sentences_to_padded_index_sequences(word_indices, datasets):
                 example['text_index_sequence'][i] = index
 
             example['text_index_sequence'] = example['text_index_sequence'].long().view(1,-1)
-            example['score'] = torch.FloatTensor([example['score']])
+            example['score'] = torch.IntTensor([example['score']])
 
             
