@@ -26,10 +26,14 @@ def load_data(path):
     #data_df['score'] = data_df.apply(lambda x: scale_score(x), axis=1)
     data_df['score'] = data_df['domain1_score']
     labels = data_df['score'] 
-    for content, label in zip(contents, labels):
+    ids = data_df['essay_id']
+    essay_set_ids = data_df['essay_set']
+    for content, label, id, essay_set_id in zip(contents, labels, ids, essay_set_ids):
         example = {}
         example["text"] = content
         example['score'] = float(label)
+        example['id'] = int(id)
+        example['essay_set'] = int(essay_set_id)
         if example["score"] is None:
             continue        
         data.append(example)
@@ -91,6 +95,6 @@ def sentences_to_padded_index_sequences(word_indices, datasets):
                 example['text_index_sequence'][i] = index
 
             example['text_index_sequence'] = example['text_index_sequence'].long().view(1,-1)
-            example['score'] = torch.IntTensor([example['score']])
+            example['score'] = torch.FloatTensor([example['score']])
 
             
